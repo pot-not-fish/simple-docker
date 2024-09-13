@@ -31,6 +31,7 @@ func NewParentProcess(tty bool) (*exec.Cmd, *os.File, error) {
 	}
 	// cmd执行的时候就会带着readPipe去执行
 	cmd.ExtraFiles = []*os.File{readPipe}
+
 	return cmd, writePipe, nil
 }
 
@@ -38,11 +39,10 @@ func RunContainerInitProcess(command string, args []string) error {
 	log.Println("start run container init process")
 
 	var err error
-	// 挂载进程proc
+	// 挂载进程proc信息
 	defaultMountFlags := syscall.MS_NOEXEC | syscall.MS_NOSUID | syscall.MS_NODEV
 	err = syscall.Mount("proc", "/proc", "proc", uintptr(defaultMountFlags), "")
 	if err != nil {
-		log.Println(err)
 		return err
 	}
 

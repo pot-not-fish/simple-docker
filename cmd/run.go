@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	container "simple-docker/common/contianer"
+	"simple-docker/common/subsystem"
 	"strings"
 
 	"github.com/urfave/cli/v2"
@@ -18,15 +19,15 @@ var RunCommand = &cli.Command{
 			Usage: "interactive and pseudo tty", // 额外开启的交互式终端
 		},
 		&cli.StringFlag{
-			Name: "mem",
-			Usage: "-mem 100m", // 限制内存使用
+			Name:  "mem",
+			Usage: "-mem 100m", // 限制内存使用 100m
 		},
 		&cli.StringFlag{
-			Name: "cpu",
-			Usage: "-cpu 100", // 限制cpu使用
+			Name:  "cpu",
+			Usage: "-cpu 20", // 限制cpu使用 20%
 		},
 		&cli.StringFlag{
-			Name: "cpuset",
+			Name:  "cpuset",
 			Usage: "-cpuset 2,4",
 		},
 	},
@@ -35,23 +36,34 @@ var RunCommand = &cli.Command{
 			cmd = ctx.Args().Get(0)
 			tty = ctx.Bool("it")
 		)
-		Run(tty, []string{cmd})
+		Run(ctx, tty, []string{cmd})
 		return nil
 	},
 }
 
-func Run(tty bool, cmds []string) {
+func Run(ctx *cli.Context, tty bool, cmds []string) {
 	parent, writePipe, err := container.NewParentProcess(tty)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	if err := parent.Start(); err != nil {
 		log.Println(err)
+		return
 	}
+
+	controlSubsystem := subsystem.NewControlSubsystem(parent.Process.Pid, "simple_docker")
+	controlSubsystem.Register(&subsystem.MemorySubSystem{MemoryLimit: ctx.String("mem")})
+	controlSubsystem.Register(&subsystem.CPUSubSystem{CpuLimmit: ctx.String("cpu")})
+	// controlSubsystem.Register(&subsystem.CPUSetSubSystem{CpuSet: ctx.String("cpuset")})
+
+	controlSubsystem.SetAll()
+	controlSubsystem.ApplyAll()
+	defer controlSubsystem.DestroyAll()
+
 	// 将参数发送通过管道发送给子进程
 	SendInitCommand(cmds, writePipe)
 	_ = parent.Wait()
-	os.Exit(-1)
 }
 
 func SendInitCommand(cmds []string, writePipe *os.File) {
